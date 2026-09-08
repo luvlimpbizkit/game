@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hazard Hunt - Walk & Fix</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --card-bg: #16213e;
+      --accent: #e94560;
+      --safe: #0f3460;
+      --success: #00b4d8;
+      --text: #ffffff;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 15px;
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    h1 {
+      margin-bottom: 3px;
+      color: #f7d070;
+      font-size: 1.5rem;
+    }
+
+    p {
+      margin-top: 0;
+      margin-bottom: 10px;
+      color: #aaa;
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    .scoreboard {
+      display: flex;
+      gap: 30px;
+      background: var(--card-bg);
+      padding: 8px 20px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-weight: bold;
+      font-size: 1.1rem;
+      border: 1px solid #0f3460;
+    }
+
+    #game-area {
+      position: relative;
+      width: 700px;
+      height: 450px;
+      background: #111827;
+      border: 3px solid #374151;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+    }
+
+    #player {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background: var(--success);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      box-shadow: 0 0 10px rgba(0, 180, 216, 0.8);
+      z-index: 5;
+      transform: translate(-50%, -50%);
+    }
+
+    .hazard-item {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      background: var(--card-bg);
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 4px 8px rgba(233, 69, 96, 0.4);
+      animation: pulse 1s infinite alternate;
+      z-index: 2;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); box-shadow: 0 0 5px var(--accent); }
+      100% { transform: scale(1.1); box-shadow: 0 0 12px var(--accent); }
+    }
+
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 20, 35, 0.92);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .overlay h2 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      color: #f7d070;
+    }
+
+    .instructions {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 10px 15px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+    }
+
+    button {
+      background-color: var(--success);
+      color: var(--text);
+      border: none;
+      padding: 12px 30px;
+      border-radius: 6px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+
+    button:hover {
+      background-color: #0096b4;
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>⚠️ Hazard Hunt: Walk & Fix</h1>
+  <p>Walk directly over the hazards to resolve them before time runs out!</p>
+
+  <div class="scoreboard">
+    <div>Hazards Fixed: <span id="score">0</span></div>
+    <div>Time Left: <span id="timer">35</span>s</div>
+  </div>
+
+  <div id="game-area">
+    <div id="player">👷‍♂️</div>
+
+    <div id="screen-overlay" class="overlay">
+      <h2 id="overlay-title">Ready for your shift?</h2>
+      <div class="instructions">
+        <strong>Controls:</strong> Use <strong>W, A, S, D</strong> or <strong>Arrow Keys</strong> to move.<br>
+        Walk your worker directly over the glowing hazards to fix them automatically!
+      </div>
+      <button id="btn-action" onclick="startGame()">Start Shift</button>
+    </div>
+  </div>
+
+  <script>
+    const hazardTypes = [
+      { icon: "⚡", name: "Live Wire" },
+      { icon: "🔥", name: "Fire Risk" },
+      { icon: "🛢️", name: "Leaking Chemical" },
+      { icon: "🌊", name: "Wet Floor" },
+      { icon: "🪜", name: "Wobbly Ladder" },
+      { icon: "🪨", name: "Tripping Hazard" }
+    ];
+
+    let score = 0;
+    let timeLeft = 35;
+    let gameInterval = null;
+    let spawnInterval = null;
+    let isPlaying = false;
+
+    let playerX = 350;
+    let playerY = 225;
+    const playerSpeed = 4.5;
+    const keysPressed = {};
+
+    const elScore = document.getElementById('score');
+    const elTimer = document.getElementById('timer');
+    const gameArea = document.getElementById('game-area');
+    const player = document.getElementById('player');
+    const screenOverlay = document.getElementById('screen-overlay');
+    const overlayTitle = document.getElementById('overlay-title');
+    const btnAction = document.getElementById('btn-action');
+
+    window.addEventListener('keydown', (e) => {
+      keysPressed[e.key.toLowerCase()] = true;
+      keysPressed[e.code] = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keysPressed[e.key.toLowerCase()] = false;
+      keysPressed[e.code] = false;
+    });
+
+    function gameLoop() {
+      if (!isPlaying) return;
+
+      if (keysPressed['w'] || keysPressed['arrowup'] || keysPressed['KeyW']) {
+        playerY -= playerSpeed;
+      }
+      if (keysPressed['s'] || keysPressed['arrowdown'] || keysPressed['KeyS']) {
+        playerY += playerSpeed;
+      }
+      if (keysPressed['a'] || keysPressed['arrowleft'] || keysPressed['KeyA']) {
+        playerX -= playerSpeed;
+      }
+      if (keysPressed['d'] || keysPressed['arrowright'] || keysPressed['KeyD']) {
+        playerX += playerSpeed;
+      }
+
+      const minX = 25, maxX = gameArea.clientWidth - 25;
+      const minY = 25, maxY = gameArea.clientHeight - 25;
+
+      if (playerX < minX) playerX = minX;
+      if (playerX > maxX) playerX = maxX;
+      if (playerY < minY) playerY = minY;
+      if (playerY > maxY) playerY = maxY;
+
+      player.style.left = playerX + 'px';
+      player.style.top = playerY + 'px';
+
+      // Check collision with all active hazards
+      const hazards = document.querySelectorAll('.hazard-item');
+      hazards.forEach(hazard => {
+        const hazardX = parseInt(hazard.style.left) + 25; // center offset (50px width / 2)
+        const hazardY = parseInt(hazard.style.top) + 25;  // center offset (50px height / 2)
+
+        // Calculate distance between player center and hazard center
+        const distance = Math.hypot(playerX - hazardX, playerY - hazardY);
+
+        // If player overlaps with hazard (collision threshold ~35px)
+        if (distance < 35) {
+          score++;
+          elScore.textContent = score;
+          hazard.remove();
+        }
+      });
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function startGame() {
+      score = 0;
+      timeLeft = 35;
+      elScore.textContent = score;
+      elTimer.textContent = timeLeft;
+      
+      playerX = gameArea.clientWidth / 2;
+      playerY = gameArea.clientHeight / 2;
+
+      screenOverlay.style.display = 'none';
+      isPlaying = true;
+
+      document.querySelectorAll('.hazard-item').forEach(el => el.remove());
+
+      requestAnimationFrame(gameLoop);
+
+      gameInterval = setInterval(() => {
+        timeLeft--;
+        elTimer.textContent = timeLeft;
+
+        if (timeLeft <= 0) {
+          endGame();
+        }
+      }, 1000);
+
+      spawnInterval = setInterval(spawnHazard, 900);
+    }
+
+    function spawnHazard() {
+      if (!isPlaying) return;
+
+      const hazardData = hazardTypes[Math.floor(Math.random() * hazardTypes.length)];
+      const hazardEl = document.createElement('div');
+      hazardEl.className = 'hazard-item';
+      hazardEl.textContent = hazardData.icon;
+      hazardEl.title = hazardData.name;
+
+      const randomX = Math.floor(Math.random() * (gameArea.clientWidth - 100)) + 50;
+      const randomY = Math.floor(Math.random() * (gameArea.clientHeight - 100)) + 50;
+
+      hazardEl.style.left = randomX + 'px';
+      hazardEl.style.top = randomY + 'px';
+
+      setTimeout(() => {
+        if (hazardEl.parentElement) {
+          hazardEl.remove();
+        }
+      }, 4000); // Increased lifespan to 4s to allow walking time
+
+      gameArea.appendChild(hazardEl);
+    }
+
+    function endGame() {
+      isPlaying = false;
+      clearInterval(gameInterval);
+      clearInterval(spawnInterval);
+
+      document.querySelectorAll('.hazard-item').forEach(el => el.remove());
+
+      overlayTitle.textContent = "Shift Completed!";
+      btnAction.textContent = "Play Again";
+      
+      const desc = screenOverlay.querySelector('.instructions');
+      desc.innerHTML = `Great job patrolling the floor! You safely resolved <strong>${score}</strong> workplace hazards by walking over them.`;
+      
+      screenOverlay.style.display = 'flex';
+    }
+  </script>
+</body>
+</html>
